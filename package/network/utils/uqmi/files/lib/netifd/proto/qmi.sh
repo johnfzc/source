@@ -101,6 +101,27 @@ proto_qmi_setup() {
 	uqmi -s -d "$device" --wda-set-data-format 802.3
 	uqmi -s -d "$device" --sync
 
+	local qmi_data_format interface_format
+	qmi_data_format="$(uqmi -s -d "$device" --wda-get-data-format)"
+	interface_format="$(cat /sys/class/net/$ifname/qmi/raw_ip)"
+
+	if [ "${qmi_data_format}" = "\"raw-ip\"" -a "${interface_format}" != "Y" ]; then
+		echo "Failed to set interface to 802.3 format, setting ${ifname} to raw"
+		if [ ! -w "/sys/class/net/$ifname/qmi/raw_ip" ]; then
+			echo "Interface $(ifname) isn't writable, unable to set data format to raw_ip"
+			return 1
+		else
+			echo Y > "/sys/class/net/$ifname/qmi/raw_ip"
+			grep -q Y "/sys/class/net/$ifname/qmi/raw_ip"
+			if [ $? -ne 0 ]; then
+				echo "Failed to configure interface $ifname for raw_ip mode"
+				return 1
+			else
+				echo "Configured interface $ifname for raw_ip mode"
+			fi
+		fi
+	fi
+
 	echo "Waiting for network registration"
 	while uqmi -s -d "$device" --get-serving-system | grep '"searching"' > /dev/null; do
 		[ -e "$device" ] || return 1
@@ -136,6 +157,8 @@ proto_qmi_setup() {
 			--stop-network 0xffffffff \
 			--autoconnect > /dev/null
 
+		uqmi -s -d "$device" --stop-network 4294967295 --autoconnect > /dev/null
+
 		pdh_4=$(uqmi -s -d "$device" --set-client-id wds,"$cid_4" \
 			--start-network \
 			${apn:+--apn $apn} \
@@ -166,6 +189,8 @@ proto_qmi_setup() {
 		uqmi -s -d "$device" --set-client-id wds,"$cid_6" \
 			--stop-network 0xffffffff \
 			--autoconnect > /dev/null
+
+		uqmi -s -d "$device" --stop-network 4294967295 --autoconnect > /dev/null
 
 		pdh_6=$(uqmi -s -d "$device" --set-client-id wds,"$cid_6" \
 			--start-network \
